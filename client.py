@@ -6,6 +6,8 @@ from time import sleep
 import os
 import httplib
 import json
+import websocket
+import threading
 
 
 # Greeter is a terminal application that greets old friends warmly,
@@ -22,6 +24,21 @@ class clear:
         return ''
 
 clear=clear()
+
+
+class StoppableThread(threading.Thread):
+    """Thread class with a stop() method. The thread itself has to check
+    regularly for the stopped() condition."""
+
+    def __init__(self, target):
+        super(StoppableThread, self).__init__(target=target)
+        self._stop = threading.Event()
+
+    def stop(self):
+        self._stop.set()
+
+    def stopped(self):
+        return self._stop.isSet()
 
 ### FUNCTIONS ###
 
@@ -43,6 +60,26 @@ class HTTPError(Exception):
     def __bool__(self):
         return self.status != 200
 
+    def __nonzero__(self):
+        return self.__bool__()
+        
+response = ""
+def user_input():
+    global response
+    response = raw_input()
+    return response
+
+def threaded_input(outString = "", breakTime = 10):
+    print(outString, end = "")
+
+    global response
+    user = StoppableThread(target=user_input)
+    user.daemon = True
+    user.start()
+    user.join(breakTime)
+    tempResponse = response
+    response = ""
+    return tempResponse
 
 conn = False
 
@@ -71,31 +108,10 @@ for i in range(9):
     boxToStringTranslator[str(i)] = out
     stringToBoxTranslator[out] = str(i)
 
-def display_title_bar():
-    # Clears the terminal screen, and displays a title bar.
-    os.system('clear')
-              
-    print("\t**********************************************")
-    print("\t***  Greeter - Hello old and new friends!  ***")
-    print("\t**********************************************")
-    
-def test():
+boxToStringTranslator[9] = "anywhere"
+boxToStringTranslator["9"] = "anywhere"
 
-    ### MAIN PROGRAM ###    
 
-    # Print a bunch of information, in short intervals
-    names = ['aaron', 'brenda', 'cyrene', 'david', 'eric']
-
-    # Print each name 5 times.
-    for name in names:
-        display_title_bar()
-
-        print("\n\n")
-        for x in range(0,5):
-            print(name.title())
-        
-        # Pause for 1 second between batches.
-        sleep(1)
 
 def makeGetRequest(host = "", path = "", type = "GET"):
     if not host:
@@ -138,9 +154,9 @@ def parseHeader(game, player):
     if str(game["Players"][game["Turn"] // 10]) == str(player):
         turnString = "Your Turn"
     else:
-        turnString = "Not Your Turn"
+        turnString = "Other Player's Turn"
     box = boxToStringTranslator[game["Turn"] % 10]
-    out = "ID: %s | %s | Box: %s" % (game["GameID"], turnString, box)
+    out = "ID: %s | Player: %s | %s | Box: %s" % (game["GameID"], player, turnString, box)
     return out
 
 def getGame(host = "", id = ""):
@@ -167,11 +183,15 @@ def makeMove(host, id, player, box, square):
 
 def ui():
     userInput = ""
-    host = raw_input("Host:")
-    id = raw_input("ID:")
-    player = raw_input("Player ID:")
-    id = "63714"
-    player = "0"
+    host = raw_input("Host: ")
+    if not host:
+        host = "localhost:8080"
+    id = raw_input("ID: ")
+    if not id:
+        id = "63714"
+    player = raw_input("Player ID: ")
+    if not player:
+        player = "0"
     printGameHeader = True
     printGameBoard = True
     printGameInfo = False
@@ -180,9 +200,18 @@ def ui():
 
     stayInLoop = True
 
+    newGame = True
+    ws = websocket.WebSocket()
+
     while stayInLoop:
         clear()
         game = getGame(host, id)
+
+        if newGame:
+            pass
+            # host = "ws://%s/game/%s/ws" % (host, id)
+            # ws = websocket.create_connection("ws://localhost:8080/game/63714/ws", http_proxy_port=8080)
+
         if game:
             if printGameHeader:
                 print(parseHeader(game,player))
@@ -202,9 +231,10 @@ def ui():
         while first:
             first = False
 
-            userInput = raw_input("\nCommand (r, h, i, m, p, s, q):")
-            if userInput.lower() == "r" or userInput.lower() == "refresh":
-                pass
+            userInput = threaded_input("\nCommand (r, h, i, m, p, s, q): ", 1)
+            print(repr(userInput))
+            if userInput.lower() == "r" or userInput.lower() == "refresh" or not userInput:
+                continue
 
             elif userInput.lower() == "h" or userInput.lower() == "header":
                 printGameHeader = True
@@ -216,27 +246,37 @@ def ui():
                 printGameBoard = True
 
             elif userInput.lower() == "m" or userInput.lower() == "move":
+                box = game["Turn"]%10
+                while box == 9:
+                    inputBox = raw_input("Box (b): ")
+                    if inputBox.lower() == "b" or inputBox.lower() == "back":
+                        break
+                    box = normalizeSquare(inputBox)
+
+                if box == 9:
+                    continue
+
                 square = -1
                 while square == -1:
-                    inputSquare = raw_input("Square:")
+                    inputSquare = raw_input("Square (b): ")
                     if inputSquare.lower() == "b" or inputSquare.lower() == "back":
                         break
                     square = normalizeSquare(inputSquare)
                 if square != -1:
-                    resp = makeMove(host, id, player, game["Turn"]%10, square)
+                    resp = makeMove(host, id, player, box, square)
                     e = HTTPError(resp)
                     if e:
                         afterText += str(e)
 
                 
             elif userInput.lower() == "s" or userInput.lower() == "switch":
-                tempid = raw_input("ID:")
+                tempid = raw_input("ID: ")
                 id = tempid if tempid else id
-                tempplayer = raw_input("Player ID:")
+                tempplayer = raw_input("Player ID: ")
                 player = tempplayer if tempplayer else player
 
             elif userInput.lower() == "p" or userInput.lower() == "player":
-                tempplayer = raw_input("Player ID:")
+                tempplayer = raw_input("Player ID: ")
                 player = tempplayer if tempplayer else player
 
             elif userInput.lower() == "q" or userInput.lower() == "quit":
