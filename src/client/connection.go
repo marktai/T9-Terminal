@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-// "/game/63714/ws"
+// "/games/63714/ws"
 func Ws(host, path string) {
 	flag.Parse()
 	log.SetFlags(0)
@@ -52,8 +52,8 @@ func Ws(host, path string) {
 	}
 }
 
-func GetStringArray(host, id string) ([]string, error) {
-	resp, err := http.Get(fmt.Sprintf("http://%s/game/%s/string", host, id))
+func GetStringArray(host string, id uint) ([]string, error) {
+	resp, err := http.Get(fmt.Sprintf("http://%s/games/%d/string", host, id))
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -90,8 +90,8 @@ func GetStringArray(host, id string) ([]string, error) {
 	return nil, errors.New("Not recognized response")
 }
 
-func GetGame(host, id string) (*Game.Game, error) {
-	resp, err := http.Get(fmt.Sprintf("http://%s/game/%s", host, id))
+func GetGame(host string, id uint) (*Game.GameInfo, error) {
+	resp, err := http.Get(fmt.Sprintf("http://%s/games/%d", host, id))
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -104,9 +104,7 @@ func GetGame(host, id string) (*Game.Game, error) {
 		return nil, err
 	}
 
-
-	
-	dummyMap :=make(map[string]*Game.Game)
+	dummyMap := make(map[string]*Game.GameInfo)
 
 	err = json.Unmarshal(body, &dummyMap)
 
@@ -117,4 +115,82 @@ func GetGame(host, id string) (*Game.Game, error) {
 	}
 
 	return g, nil
+}
+
+func GetAllGames(host string) ([]uint, error) {
+	resp, err := http.Get(fmt.Sprintf("http://%s/games", host))
+	if resp != nil {
+		defer resp.Body.Close()
+	}
+	if err != nil {
+		return nil, err
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+
+	if err != nil {
+		return nil, err
+	}
+
+	dummyMap := make(map[string][]uint)
+
+	err = json.Unmarshal(body, &dummyMap)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return dummyMap["Games"], nil
+}
+
+func MakeMove(host string, id, player, box, square uint) error {
+	resp, err := http.Post(fmt.Sprintf("http://%s/games/%d?Player=%d&Box=%d&Square=%d", host, id, player, box, square), "empty", nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
+	if err != nil {
+		return err
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+
+	respMap := make(map[string]string)
+
+	err = json.Unmarshal(body, &respMap)
+	if err != nil {
+		return err
+	}
+
+	if errText, ok := respMap["Error"]; ok {
+		return errors.New(errText)
+	}
+
+	return nil
+}
+
+func MakeGame(host string, player1, player2 uint) (uint, error) {
+	resp, err := http.Post(fmt.Sprintf("http://%s/games?Player1=%d&Player2=%d", host, player1, player2), "empty", nil)
+	if resp != nil {
+		defer resp.Body.Close()
+	}
+	if err != nil {
+		return 0, err
+	}
+	body, err := ioutil.ReadAll(resp.Body)
+
+	type createResponse struct {
+		ID    uint
+		Error string
+	}
+
+	respStruct := createResponse{}
+
+	err = json.Unmarshal(body, &respStruct)
+	if err != nil {
+		return 0, err
+	}
+
+	if respStruct.Error != "" {
+		return 0, errors.New(respStruct.Error)
+	}
+
+	return respStruct.ID, nil
 }

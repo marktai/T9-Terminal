@@ -7,24 +7,27 @@ package client
 import (
 	// "flag"
 	"fmt"
-	"log"
-	// "net/url"
-	"reflect"
-	"strings"
-	// "time"
-	"strconv"
 	"github.com/gizak/termui"
 	Game "github.com/marktai/Tic-Tac-Toe-Squared-Server/src/game"
+	"reflect"
+	"strings"
 )
 
 var parMap = make(map[string]*termui.Par)
+var linesMap = make(map[string]*lines)
 
-var boxToStringTranslator = make(map[uint]string)
-var stringToBoxTranslator = make(map[string]uint)
+var boxToString = make(map[uint]string)
+var stringToBox = make(map[string]uint)
 
 var host string
-var gameid string
-var playerid string
+var gameid uint
+var playerid uint
+
+var players [2]uint
+
+var globalGame *Game.GameInfo
+var box uint
+var square uint
 
 var state = 0
 
@@ -50,32 +53,20 @@ func initTranslators() {
 			out += "right"
 		}
 
-		boxToStringTranslator[i] = out
-		stringToBoxTranslator[out] = i
+		boxToString[i] = out
+
+		// stringToBox has both with and without dashes in the string
+		stringToBox[out] = i
+		stringToBox[strings.Replace(out, "-", "", -1)] = i
 
 	}
 
-	boxToStringTranslator[9] = "anywhere"
-}
-
-func parseHeader(game *Game.Game, player uint) string {
-	turnString := ""
-	if game.Players[game.Turn/10] == player {
-		turnString = "Your Turn"
-	} else {
-		turnString = "Other Player's Turn"
-	}
-	box, ok := boxToStringTranslator[game.Turn%10]
-	if !ok {
-			box = fmt.Sprintf("%d", game.Turn%10)
-			parMap["output"].Text = fmt.Sprint(boxToStringTranslator)
-	}
-	out := fmt.Sprintf("ID: %d | Player: %d | %s | Box: %s", game.GameID, player, turnString, box)
-	return out
-
+	boxToString[9] = "anywhere"
 }
 
 func setupBody() {
+
+	height := termui.TermHeight() - 23
 
 	prompt := termui.NewPar("")
 	prompt.Height = 1
@@ -83,123 +74,311 @@ func setupBody() {
 	parMap["prompt"] = prompt
 
 	input := termui.NewPar("")
-	input.Height = 5
+	input.Height = 3
 	input.BorderLabel = "Input"
 	input.BorderFg = termui.ColorYellow
 	parMap["input"] = input
 
+	moveHistory := termui.NewPar("")
+	moveHistory.Height = height - 4
+	moveHistory.BorderLabel = "Move History"
+	moveHistory.BorderFg = termui.ColorBlue
+	parMap["moveHistory"] = moveHistory
+	linesMap["moveHistory"] = &lines{[]string{}, 0}
+
 	output := termui.NewPar("")
-	output.Height = 6
+	output.Height = height
 	output.BorderLabel = "Output"
 	output.BorderFg = termui.ColorGreen
-	output.Display = false
 	parMap["output"] = output
+	linesMap["output"] = &lines{[]string{}, 0}
 
 	board := termui.NewPar("")
 	board.Height = 23
 	board.Width = 37
 	board.BorderLabel = "Board"
 	board.BorderFg = termui.ColorRed
-	board.Display = false
 	parMap["board"] = board
 
 	// build layout
 	termui.Body.AddRows(
 		termui.NewRow(
-			termui.NewCol(6, 0, parMap["prompt"], parMap["input"]),
+			termui.NewCol(6, 0, parMap["prompt"], parMap["input"], parMap["moveHistory"]),
 			termui.NewCol(6, 0, parMap["output"]),
 		),
 		termui.NewRow(
-			termui.NewCol(12, 0, board),
+			termui.NewCol(12, 0, parMap["board"]),
 		),
 	)
 	changeState(0)
 }
 
-func refreshBoard(host, gameid, playerid string) {
+func addToOutput(s string) {
+	linesMap["output"].Add(s)
+	for linesMap["output"].Length() > parMap["output"].Height-2 {
+		linesMap["output"].Down()
+	}
+}
 
-	lines, err := GetStringArray(host, gameid)
+func setOutput(s string) {
+	linesMap["output"].Set(s)
+}
+
+func clearOutput() {
+	linesMap["output"].Clear()
+}
+
+func adjustDimensions() {
+	termui.Body.Width = termui.TermWidth()
+	height := termui.TermHeight() - 23
+	parMap["moveHistory"].Height = height - 4
+	parMap["output"].Height = height
+}
+
+func update() {
+	parMap["moveHistory"].Text = linesMap["moveHistory"].String()
+	parMap["output"].Text = linesMap["output"].String()
+	termui.Body.Align()
+	termui.Render(termui.Body)
+}
+
+func refreshMoveHistory(game *Game.GameInfo) {
+	moves := parseMoveHistory(game)
+	linesMap["moveHistory"].Clear()
+	for _, move := range moves {
+		linesMap["moveHistory"].Add(move)
+	}
+}
+
+func refreshBoard(host string, gameid, playerid uint) error {
+	game, board, err := getGameAndString(host, gameid, playerid)
 	if err != nil {
-		log.Println(err)
-	} else {
-		boardText := ""
-		for _, line := range lines {
-			boardText += line + "\n"
+		addToOutput(err.Error())
+		if err.Error() == "Game not found" {
+			changeState(1)
+		} else if strings.Contains(err.Error(), "no such host") {
+			changeState(0)
 		}
-
-		parMap["board"].Text = boardText
+		return err
 	}
 
-	game, err := GetGame(host, gameid)
-	if err != nil {
-		parMap["output"].Text = fmt.Sprint(err)
-	} else {
-		//parMap["output"].Text = fmt.Sprint(game)
+	parMap["board"].BorderLabel = parseHeader(game, playerid)
+	parMap["board"].Text = board
 
-		playerInt, err := strconv.Atoi(playerid)
-		if err != nil {
-				// this not good
-		}
-		parMap["board"].BorderLabel = "Board | " + parseHeader(game, uint(playerInt))
+	refreshMoveHistory(game)
+
+	globalGame = game
+	return nil
 }
+
+func displayInfo(game *Game.GameInfo) {
+
+	if game == nil {
+		addToOutput("Game is nil")
+		return
+	}
+
+	addToOutput(fmt.Sprintf("Game ID: %d", game.GameID))
+	addToOutput(fmt.Sprintf("Players: %d, %d", game.Players[0], game.Players[1]))
+	addToOutput(fmt.Sprintf("Started: %s", game.Started.String()))
+	addToOutput(fmt.Sprintf("Modified: %s", game.Modified.String()))
 }
 
 func changeState(inp int) {
 	switch inp {
 	case 0:
 		parMap["prompt"].Text = "Host?"
+	case 6:
+		parMap["prompt"].Text = "Create game or join one (c, j)?"
 	case 1:
 		parMap["prompt"].Text = "Game ID?"
 	case 2:
 		parMap["prompt"].Text = "Player ID?"
 	case 3:
-		parMap["prompt"].Text = "Command (r, h, i, m, p, s, q)?"
+		parMap["prompt"].Text = "Command (r, m, i, c, p, s, q)?"
+	case 4:
+		parMap["prompt"].Text = "Box?"
+	case 5:
+		parMap["prompt"].Text = "Square?"
+	case 7:
+		parMap["prompt"].Text = "Player 1 ID?"
+	case 8:
+		parMap["prompt"].Text = "Player 2 ID?"
+
 	}
 	state = inp
+
 }
 
 func parseInput(inp string) {
 	inp = strings.ToLower(inp)
 
 	switch state {
-	case 0:
+	case 0: // getting host
+		if inp == "" {
+			inp = "localhost:8080"
+		}
 		host = inp
-		if host == "" {
-			host = "localhost:8080"
+		changeState(6)
+
+	case 6:
+		if inp == "" {
+			inp = "j"
 		}
-		changeState(1)
-	case 1:
-		gameid = inp
-		if gameid == "" {
-			gameid = "63714"
+
+		switch inp {
+		case "j", "join":
+			changeState(1)
+
+			games, err := GetAllGames(host)
+			if err != nil {
+				addToOutput(err.Error())
+				if strings.Contains(err.Error(), "no such host") {
+					changeState(0)
+				}
+			} else {
+				addToOutput("Avaliable Games:")
+				for _, game := range games {
+					addToOutput(fmt.Sprint(game))
+				}
+			}
+
+		case "c", "create":
+			changeState(7)
 		}
-		changeState(2)
-	case 2:
-		playerid = inp
-		if playerid == "" {
-			playerid = "0"
+
+	case 1: // getting game id
+		if inp == "" {
+			inp = "63714"
 		}
-		changeState(3)
-		refreshBoard(host, gameid, playerid)
-	case 3:
+
+		var err error
+		if gameid, err = stringtoUint(inp); err != nil {
+			addToOutput("Bad Game ID")
+		} else {
+			changeState(2)
+		}
+
+	case 2: // getting player id
+		if inp == "" {
+			inp = "0"
+		}
+
+		var err error
+		if playerid, err = stringtoUint(inp); err != nil {
+			addToOutput("Bad Player ID")
+		} else {
+			changeState(3)
+			refreshBoard(host, gameid, playerid)
+			displayInfo(globalGame)
+		}
+
+	case 3: // getting generic command
 		switch inp {
 		case "r", "refresh":
 			refreshBoard(host, gameid, playerid)
-	case "m", "move":
-//			makeMove(host, gameid, playerid)
-	case "q", "quit", ":q":
+			addToOutput("Refreshed")
+
+		case "m", "move":
+			if globalGame.Players[globalGame.Turn/10] == playerid {
+				if tempBox := globalGame.Turn % 10; tempBox == 9 {
+					changeState(4)
+				} else {
+					box = tempBox
+					changeState(5)
+				}
+			} else {
+				addToOutput("Not your turn")
+			}
+
+		case "i", "info": // display info
+			displayInfo(globalGame)
+
+		case "p", "player": // switch players
+			changeState(2)
+		case "s", "switch": // switch game
+			changeState(1)
+
+		case "c", "clear": // switch game
+			clearOutput()
+
+		case "q", "quit", ":q":
 			termui.StopLoop()
 		}
+
+	case 4, 5: // getting box or square
+
+		goodInput := false
+		var err error
+		var tempNum uint
+
+		if inp == "b" || inp == "back" {
+			changeState(3)
+		} else {
+			// if number input like 1
+			if tempNum, err = stringtoUint(inp); err == nil {
+				goodInput = true
+			} else {
+				var ok bool
+				// if word input like top middle
+				if tempNum, ok = stringToBox[strings.Replace(inp, " ", "", -1)]; ok {
+					goodInput = true
+				} else {
+					addToOutput("Bad Position")
+				}
+			}
+		}
+
+		if goodInput {
+			if state == 4 {
+				box = tempNum
+				changeState(5)
+			} else if state == 5 {
+				square = tempNum
+
+				err := MakeMove(host, gameid, playerid, box, square)
+				if err != nil {
+					addToOutput(err.Error())
+				}
+				changeState(3)
+				refreshBoard(host, gameid, playerid)
+			}
+		}
+	case 7:
+		if inp == "" {
+			inp = "0"
+		}
+
+		var err error
+		if players[0], err = stringtoUint(inp); err != nil {
+			addToOutput("Bad Player ID")
+		} else {
+			changeState(8)
+		}
+	case 8:
+		if inp == "" {
+			inp = "1"
+		}
+
+		var err error
+		if players[1], err = stringtoUint(inp); err != nil {
+			addToOutput("Bad Player ID")
+		} else {
+			id, err := MakeGame(host, players[0], players[1])
+			if err != nil {
+				changeState(6)
+				addToOutput(err.Error())
+			} else {
+				changeState(3)
+				refreshBoard(host, id, players[0])
+				displayInfo(globalGame)
+			}
+		}
+
 	}
-
-	//parMap["output"].Text = inp
 }
 
-func nothing(inp string) {
-
-}
 func setupHandlers() {
-
 	termui.Handle("/sys/kbd/C-c", func(termui.Event) {
 		termui.StopLoop()
 	})
@@ -220,33 +399,38 @@ func setupHandlers() {
 				if len(parMap["input"].Text) > 0 {
 					parMap["input"].Text = parMap["input"].Text[:len(parMap["input"].Text)-1]
 				}
+
+			case keyStr == "<up>":
+				for _, linesItem := range linesMap {
+					linesItem.Up()
+				}
+			case keyStr == "<down>":
+				for _, linesItem := range linesMap {
+					linesItem.Down()
+				}
+
 			case strings.Contains(keyStr, "<"):
 
 			default:
 				parMap["input"].Text += keyStr
 			}
 
-			termui.Body.Align()
-			termui.Render(termui.Body)
+			update()
 		} else {
 			dataType := reflect.TypeOf(ev.Data)
-			parMap["input"].Text += fmt.Sprint(ev.Data)
-			parMap["output"].Text += fmt.Sprint(dataType)
-			termui.Body.Align()
-			termui.Render(termui.Body)
+			addToOutput("event type of " + fmt.Sprint(dataType))
+			update()
 		}
 
 	})
 
 	termui.Handle("/sys/wnd/resize", func(e termui.Event) {
-		termui.Body.Width = termui.TermWidth()
-		termui.Body.Align()
-		termui.Render(termui.Body)
+		adjustDimensions()
+		update()
 	})
 }
 
 func UI() {
-//		test()
 	initTranslators()
 	err := termui.Init()
 	if err != nil {
@@ -262,14 +446,4 @@ func UI() {
 
 	setupHandlers()
 	termui.Loop()
-}
-
-func test() {
-
-		game, err := GetGame("localhost:8080", "63714")
-	if err != nil {
-		log.Println(err)
-	} else {
-			log.Println(game)
-	}
 }
