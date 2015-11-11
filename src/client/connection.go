@@ -10,19 +10,15 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
-	"net/url"
 	"time"
 )
 
 // "/games/63714/ws"
-func Ws(host, path string) {
+func Ws(host string, id uint) {
 	flag.Parse()
 	log.SetFlags(0)
 
-	u := url.URL{Scheme: "ws", Host: host, Path: path}
-	log.Printf("connecting to %s", u.String())
-
-	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	c, _, err := websocket.DefaultDialer.Dial(fmt.Sprintf("wss://%s/games/%d/ws", host, id), nil)
 	if err != nil {
 		log.Fatal("dial:", err)
 	}
@@ -33,10 +29,15 @@ func Ws(host, path string) {
 		for {
 			_, message, err := c.ReadMessage()
 			if err != nil {
-				log.Println("read:", err)
+				addToOutput(fmt.Sprint("read:", err))
 				break
 			}
-			log.Printf("recv: %s", message)
+			if string(message) == "Changed" {
+				refreshBoardGlobals()
+				update()
+				addToOutput("Updated game")
+			}
+
 		}
 	}()
 
@@ -53,7 +54,7 @@ func Ws(host, path string) {
 }
 
 func GetStringArray(host string, id uint) ([]string, error) {
-	resp, err := http.Get(fmt.Sprintf("http://%s/games/%d/string", host, id))
+	resp, err := http.Get(fmt.Sprintf("https://%s/games/%d/string", host, id))
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -76,7 +77,7 @@ func GetStringArray(host string, id uint) ([]string, error) {
 	err = json.Unmarshal(body, b)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.New(string(body))
 	}
 
 	if b.Error != "" {
@@ -91,7 +92,7 @@ func GetStringArray(host string, id uint) ([]string, error) {
 }
 
 func GetGame(host string, id uint) (*Game.GameInfo, error) {
-	resp, err := http.Get(fmt.Sprintf("http://%s/games/%d", host, id))
+	resp, err := http.Get(fmt.Sprintf("https://%s/games/%d", host, id))
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -108,17 +109,17 @@ func GetGame(host string, id uint) (*Game.GameInfo, error) {
 
 	err = json.Unmarshal(body, &dummyMap)
 
-	g := dummyMap["Game"]
-
 	if err != nil {
-		return nil, err
+		return nil, errors.New(string(body))
 	}
+
+	g := dummyMap["Game"]
 
 	return g, nil
 }
 
 func GetAllGames(host string) ([]uint, error) {
-	resp, err := http.Get(fmt.Sprintf("http://%s/games", host))
+	resp, err := http.Get(fmt.Sprintf("https://%s/games", host))
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -136,14 +137,14 @@ func GetAllGames(host string) ([]uint, error) {
 	err = json.Unmarshal(body, &dummyMap)
 
 	if err != nil {
-		return nil, err
+		return nil, errors.New(string(body))
 	}
 
 	return dummyMap["Games"], nil
 }
 
 func MakeMove(host string, id, player, box, square uint) error {
-	resp, err := http.Post(fmt.Sprintf("http://%s/games/%d?Player=%d&Box=%d&Square=%d", host, id, player, box, square), "empty", nil)
+	resp, err := http.Post(fmt.Sprintf("https://%s/games/%d?Player=%d&Box=%d&Square=%d", host, id, player, box, square), "empty", nil)
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -156,7 +157,7 @@ func MakeMove(host string, id, player, box, square uint) error {
 
 	err = json.Unmarshal(body, &respMap)
 	if err != nil {
-		return err
+		return errors.New(string(body))
 	}
 
 	if errText, ok := respMap["Error"]; ok {
@@ -167,7 +168,7 @@ func MakeMove(host string, id, player, box, square uint) error {
 }
 
 func MakeGame(host string, player1, player2 uint) (uint, error) {
-	resp, err := http.Post(fmt.Sprintf("http://%s/games?Player1=%d&Player2=%d", host, player1, player2), "empty", nil)
+	resp, err := http.Post(fmt.Sprintf("https://%s/games?Player1=%d&Player2=%d", host, player1, player2), "empty", nil)
 	if resp != nil {
 		defer resp.Body.Close()
 	}
@@ -185,7 +186,7 @@ func MakeGame(host string, player1, player2 uint) (uint, error) {
 
 	err = json.Unmarshal(body, &respStruct)
 	if err != nil {
-		return 0, err
+		return 0, errors.New(string(body))
 	}
 
 	if respStruct.Error != "" {

@@ -150,10 +150,14 @@ func refreshMoveHistory(game *Game.GameInfo) {
 	}
 }
 
+func refreshBoardGlobals() {
+	refreshBoard(host, gameid, playerid)
+}
+
 func refreshBoard(host string, gameid, playerid uint) error {
 	game, board, err := getGameAndString(host, gameid, playerid)
 	if err != nil {
-		addToOutput(err.Error())
+		addToOutput(fmt.Sprintf("%#v", err))
 		if err.Error() == "Game not found" {
 			changeState(1)
 		} else if strings.Contains(err.Error(), "no such host") {
@@ -216,7 +220,7 @@ func parseInput(inp string) {
 	switch state {
 	case 0: // getting host
 		if inp == "" {
-			inp = "localhost:8080"
+			inp = "www.marktai.com/T9"
 		}
 		host = inp
 		changeState(6)
@@ -228,11 +232,10 @@ func parseInput(inp string) {
 
 		switch inp {
 		case "j", "join":
-			changeState(1)
 
 			games, err := GetAllGames(host)
 			if err != nil {
-				addToOutput(err.Error())
+				addToOutput(fmt.Sprintf("%#v", err))
 				if strings.Contains(err.Error(), "no such host") {
 					changeState(0)
 				}
@@ -241,6 +244,7 @@ func parseInput(inp string) {
 				for _, game := range games {
 					addToOutput(fmt.Sprint(game))
 				}
+				changeState(1)
 			}
 
 		case "c", "create":
@@ -271,6 +275,7 @@ func parseInput(inp string) {
 			changeState(3)
 			refreshBoard(host, gameid, playerid)
 			displayInfo(globalGame)
+			Ws(host, gameid)
 		}
 
 	case 3: // getting generic command
@@ -338,7 +343,7 @@ func parseInput(inp string) {
 
 				err := MakeMove(host, gameid, playerid, box, square)
 				if err != nil {
-					addToOutput(err.Error())
+					addToOutput(fmt.Sprintf("%#v", err))
 				}
 				changeState(3)
 				refreshBoard(host, gameid, playerid)
@@ -367,11 +372,13 @@ func parseInput(inp string) {
 			id, err := MakeGame(host, players[0], players[1])
 			if err != nil {
 				changeState(6)
-				addToOutput(err.Error())
+				addToOutput(fmt.Sprintf("%#v", err))
 			} else {
 				changeState(3)
+				gameid = id
 				refreshBoard(host, id, players[0])
 				displayInfo(globalGame)
+				Ws(host, gameid)
 			}
 		}
 

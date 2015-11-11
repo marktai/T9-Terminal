@@ -6,7 +6,10 @@ init:
 	@cd src/main && go get
 
 build: init
-	@go build -o bin/main src/main/main.go 
+	@go build -o bin/T9client src/main/main.go 
+
+buildOSX: init
+	@ GOOS=darwin go build -o bin/T9clientOSX src/main/main.go 
 
 run: build
-	@bin/main
+	@bin/T9client
