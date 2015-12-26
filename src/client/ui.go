@@ -30,6 +30,7 @@ var box uint
 var square uint
 
 var state = 0
+var count = 0
 
 func initTranslators() {
 
@@ -130,9 +131,14 @@ func clearOutput() {
 
 func adjustDimensions() {
 	termui.Body.Width = termui.TermWidth()
-	height := termui.TermHeight() - 23
-	parMap["moveHistory"].Height = height - 4
-	parMap["output"].Height = height
+	height := termui.TermHeight()
+	parMap["moveHistory"].Height = height - 23 - 4
+	parMap["output"].Height = height - 23
+	if height < 31 {
+		parMap["board"].Height = height - 8
+		parMap["moveHistory"].Height = 2
+		parMap["output"].Height = 6
+	}
 }
 
 func update() {
@@ -275,7 +281,7 @@ func parseInput(inp string) {
 			changeState(3)
 			refreshBoard(host, gameid, playerid)
 			displayInfo(globalGame)
-			Ws(host, gameid)
+			go Ws(host, gameid)
 		}
 
 	case 3: // getting generic command
@@ -378,7 +384,7 @@ func parseInput(inp string) {
 				gameid = id
 				refreshBoard(host, id, players[0])
 				displayInfo(globalGame)
-				Ws(host, gameid)
+				go Ws(host, gameid)
 			}
 		}
 
@@ -397,8 +403,11 @@ func setupHandlers() {
 			switch {
 			case keyStr == "<enter>":
 				inp := parMap["input"].Text
+				count += 1
+				//addToOutput(fmt.Sprintf("parsing %d", count))
 				parseInput(inp)
 				parMap["input"].Text = ""
+				//addToOutput(fmt.Sprintf("cleared %d", count))
 			case keyStr == "<space>":
 				parMap["input"].Text += " "
 			case keyStr == "C-8":
