@@ -18,8 +18,8 @@ buildOSX: init
 	GOOS=darwin go build -o bin/T9clientOSX src/main/main.go 
 
 buildWindows: init
-	rm -f bin/T9clientWindows
-	GOOS=windows go build -o bin/T9clientWindows src/main/main.go
+	rm -f bin/T9clientWindows.exe
+	GOOS=windows go build -o bin/T9clientWindows.exe src/main/main.go
 
 buildAll: buildLinux buildOSX buildWindows
 
