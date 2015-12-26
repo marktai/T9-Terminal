@@ -414,7 +414,7 @@ func setupHandlers() {
 				//addToOutput(fmt.Sprintf("cleared %d", count))
 			case keyStr == "<space>":
 				parMap["input"].Text += " "
-			case keyStr == "C-8":
+			case keyStr == "C-8", keyStr == "<backspace>":
 				// for some reason, backspace is C-8
 				if len(parMap["input"].Text) > 0 {
 					parMap["input"].Text = parMap["input"].Text[:len(parMap["input"].Text)-1]
