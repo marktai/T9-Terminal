@@ -1,7 +1,17 @@
 package main
 
-import "client"
+import (
+	"client"
+	"flag"
+)
 
 func main() {
-	client.UI()
+
+	var refresh uint
+
+	flag.UintVar(&refresh, "refresh", 100, "Refresh rate in milliseconds")
+
+	flag.Parse()
+
+	client.UI(refresh)
 }

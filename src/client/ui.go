@@ -1,7 +1,3 @@
-// Copyright 2015 The Gorilla WebSocket Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
 package client
 
 import (
@@ -11,6 +7,7 @@ import (
 	Game "github.com/marktai/Tic-Tac-Toe-Squared-Server/src/game"
 	"reflect"
 	"strings"
+	"time"
 )
 
 var parMap = make(map[string]*termui.Par)
@@ -141,7 +138,13 @@ func adjustDimensions() {
 	}
 }
 
+var updateBool bool
+
 func update() {
+	updateBool = true
+}
+
+func render() {
 	parMap["moveHistory"].Text = linesMap["moveHistory"].String()
 	parMap["output"].Text = linesMap["output"].String()
 	termui.Body.Align()
@@ -205,7 +208,7 @@ func changeState(inp int) {
 	case 2:
 		parMap["prompt"].Text = "Player ID?"
 	case 3:
-		parMap["prompt"].Text = "Command (r, m, i, c, p, s, q)?"
+		parMap["prompt"].Text = "Command (m, i, r, c, p, s, q, h)?"
 	case 4:
 		parMap["prompt"].Text = "Box?"
 	case 5:
@@ -286,10 +289,6 @@ func parseInput(inp string) {
 
 	case 3: // getting generic command
 		switch inp {
-		case "r", "refresh":
-			refreshBoard(host, gameid, playerid)
-			addToOutput("Refreshed")
-
 		case "m", "move":
 			if globalGame.Players[globalGame.Turn/10] == playerid {
 				if tempBox := globalGame.Turn % 10; tempBox == 9 {
@@ -304,7 +303,9 @@ func parseInput(inp string) {
 
 		case "i", "info": // display info
 			displayInfo(globalGame)
-
+		case "r", "refresh":
+			refreshBoard(host, gameid, playerid)
+			addToOutput("Refreshed")
 		case "p", "player": // switch players
 			changeState(2)
 		case "s", "switch": // switch game
@@ -315,6 +316,9 @@ func parseInput(inp string) {
 
 		case "q", "quit", ":q":
 			termui.StopLoop()
+
+		case "h", "help":
+			addToOutput("m (move), i (info), r (refresh), c (clear), p (change player), s (switch game), q (quit), h (this help)")
 		}
 
 	case 4, 5: // getting box or square
@@ -446,13 +450,32 @@ func setupHandlers() {
 	})
 }
 
-func UI() {
+func UI(refresh uint) {
 	initTranslators()
 	err := termui.Init()
 	if err != nil {
 		panic(err)
 	}
 	defer termui.Close()
+
+	killChan := make(chan bool)
+
+	go func() {
+		tickerChan := time.NewTicker(time.Millisecond * time.Duration(refresh)).C
+		for {
+			select {
+			case <-killChan:
+				break
+			case <-tickerChan:
+				if updateBool {
+					render()
+					updateBool = false
+				}
+			}
+		}
+	}()
+
+	defer func() { killChan <- true }()
 
 	setupBody()
 

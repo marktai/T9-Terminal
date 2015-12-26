@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// MUST BE USED AS go Ws(host, id)
 // "/games/63714/ws"
 func Ws(host string, id uint) {
 	flag.Parse()
