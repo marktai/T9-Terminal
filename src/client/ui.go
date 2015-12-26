@@ -430,7 +430,7 @@ func setupHandlers() {
 				}
 
 			case strings.Contains(keyStr, "<"):
-
+				addToOutput(keyStr)
 			default:
 				parMap["input"].Text += keyStr
 			}
