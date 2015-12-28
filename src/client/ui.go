@@ -29,6 +29,9 @@ var square uint
 var state = 0
 var count = 0
 
+var promptText = "Command (m, i, r, c, p, s, q, h)?"
+var helpText = "m (move), i (info), r (refresh), c (clear), p (change player), s (switch game), q (quit), h (this help)"
+
 func initTranslators() {
 
 	for i := uint(0); i < 9; i++ {
@@ -166,7 +169,7 @@ func refreshBoardGlobals() {
 func refreshBoard(host string, gameid, playerid uint) error {
 	game, board, err := getGameAndString(host, gameid, playerid)
 	if err != nil {
-		addToOutput(fmt.Sprintf("%#v", err))
+		addToOutput(fmt.Sprintf("%s", err.Error()))
 		if err.Error() == "Game not found" {
 			changeState(1)
 		} else if strings.Contains(err.Error(), "no such host") {
@@ -204,11 +207,18 @@ func changeState(inp int) {
 	case 6:
 		parMap["prompt"].Text = "Create game or join one (c, j)?"
 	case 1:
+		games, err := GetAllGames(host)
+		addToOutput("Avaliable Games:")
+		if err == nil {
+			for _, game := range games {
+				addToOutput(fmt.Sprint(game))
+			}
+		}
 		parMap["prompt"].Text = "Game ID?"
 	case 2:
 		parMap["prompt"].Text = "Player ID?"
 	case 3:
-		parMap["prompt"].Text = "Command (m, i, r, c, p, s, q, h)?"
+		parMap["prompt"].Text = promptText
 	case 4:
 		parMap["prompt"].Text = "Box?"
 	case 5:
@@ -242,17 +252,13 @@ func parseInput(inp string) {
 		switch inp {
 		case "j", "join":
 
-			games, err := GetAllGames(host)
+			_, err := GetAllGames(host)
 			if err != nil {
 				addToOutput(fmt.Sprintf("%#v", err))
 				if strings.Contains(err.Error(), "no such host") {
 					changeState(0)
 				}
 			} else {
-				addToOutput("Avaliable Games:")
-				for _, game := range games {
-					addToOutput(fmt.Sprint(game))
-				}
 				changeState(1)
 			}
 
@@ -261,10 +267,6 @@ func parseInput(inp string) {
 		}
 
 	case 1: // getting game id
-		if inp == "" {
-			inp = "63714"
-		}
-
 		var err error
 		if gameid, err = stringtoUint(inp); err != nil {
 			addToOutput("Bad Game ID")
@@ -281,10 +283,14 @@ func parseInput(inp string) {
 		if playerid, err = stringtoUint(inp); err != nil {
 			addToOutput("Bad Player ID")
 		} else {
-			changeState(3)
-			refreshBoard(host, gameid, playerid)
-			displayInfo(globalGame)
-			go Ws(host, gameid)
+			if err := refreshBoard(host, gameid, playerid); err != nil {
+			} else {
+				changeState(3)
+				clearOutput()
+				displayInfo(globalGame)
+				addToOutput(helpText)
+				go Ws(host, gameid)
+			}
 		}
 
 	case 3: // getting generic command
@@ -318,7 +324,7 @@ func parseInput(inp string) {
 			termui.StopLoop()
 
 		case "h", "help":
-			addToOutput("m (move), i (info), r (refresh), c (clear), p (change player), s (switch game), q (quit), h (this help)")
+			addToOutput(helpText)
 		}
 
 	case 4, 5: // getting box or square

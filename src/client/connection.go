@@ -10,6 +10,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -27,15 +28,19 @@ func Ws(host string, id uint) {
 
 	go func() {
 		defer c.Close()
+
+		var oldMessage string
 		for {
 			_, message, err := c.ReadMessage()
 			if err != nil {
 				addToOutput(fmt.Sprint("read:", err))
 				break
 			}
-			if string(message) == "Changed" {
+			if strings.Contains(string(message), "Changed") && string(message) != oldMessage {
+				oldMessage = string(message)
 				refreshBoardGlobals()
 				update()
+				addToOutput(oldMessage)
 				addToOutput("Updated game")
 			}
 
