@@ -21,7 +21,7 @@ windows: init
 	rm -f bin/T9clientWindows.exe
 	GOOS=windows go build -o bin/T9clientWindows.exe src/main/main.go
 
-all: buildLinux buildOSX buildWindows
+all: linux osx windows
 
 run: build
 	bin/T9client
