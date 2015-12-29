@@ -35,7 +35,7 @@ func parseMoveHistory(game *Game.GameInfo) [18]string {
 		if move == 127 {
 			break
 		}
-		moves[i] = fmt.Sprintf("%d Ago) B: %s, S: %s", i+1, boxToString[move/9], boxToString[move%9])
+		moves[i] = fmt.Sprintf("%d Ago) B:%s, S:%s", i+1, boxToString[move/9], boxToString[move%9])
 	}
 
 	return moves
@@ -47,10 +47,16 @@ func getGameAndString(host string, gameid, playerid uint) (*Game.GameInfo, strin
 		return nil, "", err
 	}
 	boardText := ""
+	start := true
 	for _, line := range lines {
+		if !start {
+			boardText += "\n"
+		} else {
+			start = false
+		}
 		line = strings.Replace(line, "x", "[x](fg-red)", -1)
 		line = strings.Replace(line, "o", "[o](fg-green)", -1)
-		boardText += line + "\n"
+		boardText += line
 	}
 
 	game, err := GetGame(host, gameid)

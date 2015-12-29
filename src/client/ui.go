@@ -59,6 +59,12 @@ func initTranslators() {
 		// stringToBox has both with and without dashes in the string
 		stringToBox[out] = i
 		stringToBox[strings.Replace(out, "-", "", -1)] = i
+		sep := strings.Index(out, "-")
+		if sep != -1 {
+			inverseOut := out[sep+1:len(out)] + out[0:sep+1]
+			stringToBox[inverseOut] = i
+			stringToBox[strings.Replace(inverseOut, "-", "", -1)] = i
+		}
 
 	}
 
@@ -85,14 +91,14 @@ func setupBody() {
 	moveHistory.BorderLabel = "Move History"
 	moveHistory.BorderFg = termui.ColorBlue
 	parMap["moveHistory"] = moveHistory
-	linesMap["moveHistory"] = &lines{[]string{}, 0}
+	linesMap["moveHistory"] = NewLines()
 
 	output := termui.NewPar("")
 	output.Height = height
 	output.BorderLabel = "Output"
 	output.BorderFg = termui.ColorGreen
 	parMap["output"] = output
-	linesMap["output"] = &lines{[]string{}, 0}
+	linesMap["output"] = NewLines()
 
 	board := termui.NewPar("")
 	board.Height = 23
@@ -116,7 +122,7 @@ func setupBody() {
 
 func addToOutput(s string) {
 	linesMap["output"].Add(s)
-	for linesMap["output"].Length() > parMap["output"].Height-2 {
+	for linesMap["output"].CalcHeight(parMap["output"].Width) > parMap["output"].Height-2 {
 		linesMap["output"].Down()
 	}
 }
@@ -158,7 +164,10 @@ func refreshMoveHistory(game *Game.GameInfo) {
 	moves := parseMoveHistory(game)
 	linesMap["moveHistory"].Clear()
 	for _, move := range moves {
-		linesMap["moveHistory"].Add(move)
+		if move != "" {
+
+			linesMap["moveHistory"].Add(move)
+		}
 	}
 }
 
@@ -391,6 +400,7 @@ func parseInput(inp string) {
 				addToOutput(fmt.Sprintf("%#v", err))
 			} else {
 				changeState(3)
+				playerid = players[0]
 				gameid = id
 				refreshBoard(host, id, players[0])
 				displayInfo(globalGame)
